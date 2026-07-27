@@ -10,6 +10,7 @@ import (
 	"math/rand"
 	"net/http"
 	"os"
+	"os/exec"
 	"os/signal"
 	"path/filepath"
 	"reflect"
@@ -675,6 +676,15 @@ func extractDirectPathFromURL(url string) string {
 	return "/" + pathPart
 }
 
+// notifyPlasma sends a desktop notification via libnotify (works on KDE Plasma).
+// Best-effort: failures are ignored so a missing notify-send never blocks startup.
+func notifyPlasma(title, body string) {
+	// ponytail: notify-send covers KDE/GNOME/any libnotify desktop; no Go dep needed
+	if err := exec.Command("notify-send", "-a", "WhatsApp Bridge", title, body).Run(); err != nil {
+		fmt.Printf("notify-send failed (ignored): %v\n", err)
+	}
+}
+
 // Start a REST API server to expose the WhatsApp client functionality
 func startRESTServer(client *whatsmeow.Client, messageStore *MessageStore, port int) {
 	// Handler for sending messages
@@ -904,6 +914,9 @@ func main() {
 	}
 
 	fmt.Println("\n✓ Connected to WhatsApp! Type 'help' for commands.")
+
+	// Notify the Plasma/KDE desktop that the bridge is ready
+	notifyPlasma("WhatsApp Bridge", "Conectado e pronto ✓")
 
 	// Start REST API server
 	startRESTServer(client, messageStore, 8080)

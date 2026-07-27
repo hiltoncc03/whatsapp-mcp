@@ -1,5 +1,7 @@
 # WhatsApp MCP Server — Linux/KDE Fork
 
+**🌐 Idioma / Language:** **Português** · [English](./README.en.md)
+
 > Fork de [`lharries/whatsapp-mcp`](https://github.com/lharries/whatsapp-mcp) mantido por [@hiltoncc03](https://github.com/hiltoncc03), com foco em rodar de forma estável no Linux (testado em **CachyOS + KDE Plasma**).
 
 Um servidor **Model Context Protocol (MCP)** para o WhatsApp. Com ele você pode buscar e ler suas mensagens pessoais do WhatsApp (incluindo imagens, vídeos, documentos e áudios), pesquisar contatos e enviar mensagens para pessoas ou grupos — tudo através de um agente de IA como o Claude.

@@ -1,63 +1,70 @@
-# WhatsApp MCP Server
+# WhatsApp MCP Server — Linux/KDE Fork
 
-This is a Model Context Protocol (MCP) server for WhatsApp.
+> Fork de [`lharries/whatsapp-mcp`](https://github.com/lharries/whatsapp-mcp) mantido por [@hiltoncc03](https://github.com/hiltoncc03), com foco em rodar de forma estável no Linux (testado em **CachyOS + KDE Plasma**).
 
-With this you can search and read your personal Whatsapp messages (including images, videos, documents, and audio messages), search your contacts and send messages to either individuals or groups. You can also send media files including images, videos, documents, and audio messages.
+Um servidor **Model Context Protocol (MCP)** para o WhatsApp. Com ele você pode buscar e ler suas mensagens pessoais do WhatsApp (incluindo imagens, vídeos, documentos e áudios), pesquisar contatos e enviar mensagens para pessoas ou grupos — tudo através de um agente de IA como o Claude.
 
-It connects to your **personal WhatsApp account** directly via the Whatsapp web multidevice API (using the [whatsmeow](https://github.com/tulir/whatsmeow) library). All your messages are stored locally in a SQLite database and only sent to an LLM (such as Claude) when the agent accesses them through tools (which you control).
-
-Here's an example of what you can do when it's connected to Claude.
+A conexão é feita **diretamente na sua conta pessoal do WhatsApp** via API web multidispositivo (biblioteca [whatsmeow](https://github.com/tulir/whatsmeow)). Todas as mensagens ficam armazenadas **localmente** em um banco SQLite e só são enviadas ao LLM quando o agente as acessa através das ferramentas — que você controla.
 
 ![WhatsApp MCP](./example-use.png)
 
-> To get updates on this and other projects I work on [enter your email here](https://docs.google.com/forms/d/1rTF9wMBTN0vPfzWuQa2BjfGKdKIpTbyeKxhPMcEzgyI/preview)
+## O que este fork adiciona
 
-> *Caution:* as with many MCP servers, the WhatsApp MCP is subject to [the lethal trifecta](https://simonwillison.net/2025/Jun/16/the-lethal-trifecta/). This means that project injection could lead to private data exfiltration.
+Em relação ao projeto original, este fork traz:
 
-## Installation
+- 🔔 **Notificação nativa no desktop (KDE Plasma / GNOME / qualquer libnotify)** toda vez que o bridge inicia e fica pronto (`notify-send`, sem dependência Go nova).
+- 🔄 **Migração para a API atual do whatsmeow** — parâmetros `context.Context` em `Download`, `sqlstore.New`, `GetFirstDevice`, `GetGroupInfo` e `GetContact`, além de dependências atualizadas (whatsmeow, libsignal, go-sqlite3, protobuf). Corrige falhas de compilação/conexão com as versões novas do servidor do WhatsApp.
+- ⚙️ **Serviço systemd de usuário** para iniciar automaticamente no boot e reiniciar sozinho (instruções abaixo).
 
-### Prerequisites
+> ⚠️ **Nota de segurança:** por padrão o bridge escuta em `:8080` em **todas as interfaces de rede** e **sem autenticação** — qualquer um na mesma rede pode enviar mensagens pela sua conta. Se a máquina não for isolada, altere `serverAddr` em `whatsapp-bridge/main.go` para `fmt.Sprintf("127.0.0.1:%d", port)` para escutar apenas em localhost (o servidor MCP roda na mesma máquina, então não precisa de acesso pela rede).
 
-- Go
-- Python 3.6+
-- Anthropic Claude Desktop app (or Cursor)
-- UV (Python package manager), install with `curl -LsSf https://astral.sh/uv/install.sh | sh`
-- FFmpeg (_optional_) - Only needed for audio messages. If you want to send audio files as playable WhatsApp voice messages, they must be in `.ogg` Opus format. With FFmpeg installed, the MCP server will automatically convert non-Opus audio files. Without FFmpeg, you can still send raw audio files using the `send_file` tool.
+> ⚠️ **Sobre banimento:** o whatsmeow é um cliente **não-oficial** e usá-lo tecnicamente viola os Termos de Serviço do WhatsApp. Para uso pessoal e moderado (ler chats, responder contatos que já te conhecem, volume humano) o risco é baixo, mas existe. **Evite** envio em massa, automação agressiva e mensagens para números que não te conhecem.
 
-### Steps
+> ⚠️ Como muitos servidores MCP, este está sujeito à [lethal trifecta](https://simonwillison.net/2025/Jun/16/the-lethal-trifecta/): injeção de prompt pode levar à exfiltração de dados privados.
 
-1. **Clone this repository**
+## Instalação
+
+### Pré-requisitos
+
+- **Go** (1.25+)
+- **Python 3.6+**
+- **UV** (gerenciador de pacotes Python): `curl -LsSf https://astral.sh/uv/install.sh | sh`
+- **Claude Desktop**, **Cursor** ou **Claude Code** (CLI)
+- **FFmpeg** (_opcional_) — necessário apenas para enviar áudios como mensagens de voz do WhatsApp (formato `.ogg` Opus). Com o FFmpeg instalado, o servidor converte automaticamente outros formatos.
+- **libnotify** (`notify-send`) — para as notificações de desktop deste fork (já presente na maioria dos ambientes KDE/GNOME).
+
+### Passos
+
+1. **Clone o fork**
 
    ```bash
-   git clone https://github.com/lharries/whatsapp-mcp.git
+   git clone https://github.com/hiltoncc03/whatsapp-mcp.git
    cd whatsapp-mcp
    ```
 
-2. **Run the WhatsApp bridge**
-
-   Navigate to the whatsapp-bridge directory and run the Go application:
+2. **Rode o WhatsApp bridge**
 
    ```bash
    cd whatsapp-bridge
    go run main.go
    ```
 
-   The first time you run it, you will be prompted to scan a QR code. Scan the QR code with your WhatsApp mobile app to authenticate.
+   Na primeira execução, um **QR code** será exibido no terminal. Escaneie com o WhatsApp do celular em **Configurações → Aparelhos conectados → Conectar um aparelho**.
 
-   After approximately 20 days, you will might need to re-authenticate.
+   Quando conectar e ficar pronto, uma **notificação de desktop** será disparada. Após ~20 dias pode ser necessário reautenticar.
 
-3. **Connect to the MCP server**
+3. **Conecte ao servidor MCP**
 
-   Copy the below json with the appropriate {{PATH}} values:
+   #### Claude Desktop / Cursor
 
    ```json
    {
      "mcpServers": {
        "whatsapp": {
-         "command": "{{PATH_TO_UV}}", // Run `which uv` and place the output here
+         "command": "{{PATH_TO_UV}}",
          "args": [
            "--directory",
-           "{{PATH_TO_SRC}}/whatsapp-mcp/whatsapp-mcp-server", // cd into the repo, run `pwd` and enter the output here + "/whatsapp-mcp-server"
+           "{{PATH_TO_SRC}}/whatsapp-mcp/whatsapp-mcp-server",
            "run",
            "main.py"
          ]
@@ -66,118 +73,126 @@ Here's an example of what you can do when it's connected to Claude.
    }
    ```
 
-   For **Claude**, save this as `claude_desktop_config.json` in your Claude Desktop configuration directory at:
+   - `{{PATH_TO_UV}}`: saída de `which uv`
+   - `{{PATH_TO_SRC}}`: caminho onde você clonou o repo (`pwd`)
 
+   Salve como `claude_desktop_config.json` (Claude Desktop) ou `~/.cursor/mcp.json` (Cursor) e reinicie o app.
+
+   #### Claude Code (CLI)
+
+   ```bash
+   claude mcp add whatsapp -- uv --directory /caminho/para/whatsapp-mcp/whatsapp-mcp-server run main.py
    ```
-   ~/Library/Application Support/Claude/claude_desktop_config.json
-   ```
 
-   For **Cursor**, save this as `mcp.json` in your Cursor configuration directory at:
+## Iniciar automaticamente no boot (systemd — Linux)
 
-   ```
-   ~/.cursor/mcp.json
-   ```
+Este fork foi pensado para rodar como serviço. Compile o binário e crie um serviço de usuário:
 
-4. **Restart Claude Desktop / Cursor**
-
-   Open Claude Desktop and you should now see WhatsApp as an available integration.
-
-   Or restart Cursor.
-
-### Windows Compatibility
-
-If you're running this project on Windows, be aware that `go-sqlite3` requires **CGO to be enabled** in order to compile and work properly. By default, **CGO is disabled on Windows**, so you need to explicitly enable it and have a C compiler installed.
-
-#### Steps to get it working:
-
-1. **Install a C compiler**  
-   We recommend using [MSYS2](https://www.msys2.org/) to install a C compiler for Windows. After installing MSYS2, make sure to add the `ucrt64\bin` folder to your `PATH`.  
-   → A step-by-step guide is available [here](https://code.visualstudio.com/docs/cpp/config-mingw).
-
-2. **Enable CGO and run the app**
+1. **Compile:**
 
    ```bash
    cd whatsapp-bridge
-   go env -w CGO_ENABLED=1
-   go run main.go
+   go build -o whatsapp-bridge .
    ```
 
-Without this setup, you'll likely run into errors like:
+2. **Crie** `~/.config/systemd/user/whatsapp-bridge.service`:
 
-> `Binary was compiled with 'CGO_ENABLED=0', go-sqlite3 requires cgo to work.`
+   ```ini
+   [Unit]
+   Description=WhatsApp MCP Bridge
+   After=network-online.target
+   Wants=network-online.target
 
-## Architecture Overview
+   [Service]
+   WorkingDirectory=%h/whatsapp-mcp/whatsapp-bridge
+   ExecStart=%h/whatsapp-mcp/whatsapp-bridge/whatsapp-bridge
+   Restart=on-failure
+   RestartSec=5
 
-This application consists of two main components:
+   [Install]
+   WantedBy=default.target
+   ```
 
-1. **Go WhatsApp Bridge** (`whatsapp-bridge/`): A Go application that connects to WhatsApp's web API, handles authentication via QR code, and stores message history in SQLite. It serves as the bridge between WhatsApp and the MCP server.
+3. **Ative e habilite no boot:**
 
-2. **Python MCP Server** (`whatsapp-mcp-server/`): A Python server implementing the Model Context Protocol (MCP), which provides standardized tools for Claude to interact with WhatsApp data and send/receive messages.
+   ```bash
+   systemctl --user daemon-reload
+   systemctl --user enable --now whatsapp-bridge.service
+   loginctl enable-linger "$USER"   # inicia no boot mesmo sem login gráfico
+   ```
 
-### Data Storage
+   Comandos úteis:
 
-- All message history is stored in a SQLite database within the `whatsapp-bridge/store/` directory
-- The database maintains tables for chats and messages
-- Messages are indexed for efficient searching and retrieval
+   ```bash
+   systemctl --user status whatsapp-bridge      # estado
+   systemctl --user restart whatsapp-bridge     # reiniciar
+   journalctl --user -u whatsapp-bridge -f      # logs (ex.: QR ao reautenticar)
+   ```
 
-## Usage
+   > O `WorkingDirectory` **precisa** apontar para `whatsapp-bridge/`, pois o banco é gravado em `store/` relativo a esse diretório — e é dele que o servidor MCP lê. Se iniciar de outro lugar, o bridge grava num `store/` diferente e o MCP não enxerga as mensagens.
 
-Once connected, you can interact with your WhatsApp contacts through Claude, leveraging Claude's AI capabilities in your WhatsApp conversations.
+### Compatibilidade com Windows
 
-### MCP Tools
+O `go-sqlite3` exige **CGO habilitado**, que vem desligado por padrão no Windows. Instale um compilador C (via [MSYS2](https://www.msys2.org/), adicionando `ucrt64\bin` ao `PATH`) e rode:
 
-Claude can access the following tools to interact with WhatsApp:
+```bash
+cd whatsapp-bridge
+go env -w CGO_ENABLED=1
+go run main.go
+```
 
-- **search_contacts**: Search for contacts by name or phone number
-- **list_messages**: Retrieve messages with optional filters and context
-- **list_chats**: List available chats with metadata
-- **get_chat**: Get information about a specific chat
-- **get_direct_chat_by_contact**: Find a direct chat with a specific contact
-- **get_contact_chats**: List all chats involving a specific contact
-- **get_last_interaction**: Get the most recent message with a contact
-- **get_message_context**: Retrieve context around a specific message
-- **send_message**: Send a WhatsApp message to a specified phone number or group JID
-- **send_file**: Send a file (image, video, raw audio, document) to a specified recipient
-- **send_audio_message**: Send an audio file as a WhatsApp voice message (requires the file to be an .ogg opus file or ffmpeg must be installed)
-- **download_media**: Download media from a WhatsApp message and get the local file path
+Sem isso você verá: `Binary was compiled with 'CGO_ENABLED=0', go-sqlite3 requires cgo to work.`
 
-### Media Handling Features
+## Arquitetura
 
-The MCP server supports both sending and receiving various media types:
+A aplicação tem dois componentes:
 
-#### Media Sending
+1. **Go WhatsApp Bridge** (`whatsapp-bridge/`): conecta na API web do WhatsApp, autentica via QR code, armazena o histórico em SQLite e expõe uma API REST em `:8080`.
+2. **Python MCP Server** (`whatsapp-mcp-server/`): implementa o Model Context Protocol, fornecendo as ferramentas padronizadas para o Claude interagir com os dados do WhatsApp.
 
-You can send various media types to your WhatsApp contacts:
+### Armazenamento
 
-- **Images, Videos, Documents**: Use the `send_file` tool to share any supported media type.
-- **Voice Messages**: Use the `send_audio_message` tool to send audio files as playable WhatsApp voice messages.
-  - For optimal compatibility, audio files should be in `.ogg` Opus format.
-  - With FFmpeg installed, the system will automatically convert other audio formats (MP3, WAV, etc.) to the required format.
-  - Without FFmpeg, you can still send raw audio files using the `send_file` tool, but they won't appear as playable voice messages.
+- O histórico fica em SQLite dentro de `whatsapp-bridge/store/` (`messages.db` e `whatsapp.db`).
+- Os dados são gravados **em texto puro** — mantenha as permissões do diretório restritas ao seu usuário.
 
-#### Media Downloading
+## Ferramentas MCP
 
-By default, just the metadata of the media is stored in the local database. The message will indicate that media was sent. To access this media you need to use the download_media tool which takes the `message_id` and `chat_jid` (which are shown when printing messages containing the meda), this downloads the media and then returns the file path which can be then opened or passed to another tool.
+- **search_contacts**: busca contatos por nome ou telefone
+- **list_messages**: recupera mensagens com filtros e contexto
+- **list_chats**: lista chats com metadados
+- **get_chat**: informações de um chat específico
+- **get_direct_chat_by_contact**: encontra o chat direto com um contato
+- **get_contact_chats**: lista todos os chats de um contato
+- **get_last_interaction**: última mensagem trocada com um contato
+- **get_message_context**: contexto ao redor de uma mensagem
+- **send_message**: envia mensagem para um número ou JID de grupo
+- **send_file**: envia arquivo (imagem, vídeo, áudio bruto, documento)
+- **send_audio_message**: envia áudio como mensagem de voz (requer `.ogg` Opus ou FFmpeg instalado)
+- **download_media**: baixa a mídia de uma mensagem e retorna o caminho local
 
-## Technical Details
+### Mídia
 
-1. Claude sends requests to the Python MCP server
-2. The MCP server queries the Go bridge for WhatsApp data or directly to the SQLite database
-3. The Go accesses the WhatsApp API and keeps the SQLite database up to date
-4. Data flows back through the chain to Claude
-5. When sending messages, the request flows from Claude through the MCP server to the Go bridge and to WhatsApp
+**Envio:** use `send_file` para imagens/vídeos/documentos e `send_audio_message` para mensagens de voz (com FFmpeg, converte MP3/WAV automaticamente para `.ogg` Opus).
+
+**Download:** por padrão apenas os metadados da mídia ficam no banco. Para acessar o arquivo, use `download_media` com o `message_id` e o `chat_jid` (exibidos ao listar mensagens); ele baixa e retorna o caminho local.
+
+## Como funciona
+
+1. O Claude envia requisições ao servidor MCP em Python
+2. O servidor MCP consulta o bridge Go / o banco SQLite
+3. O bridge Go acessa a API do WhatsApp e mantém o SQLite atualizado
+4. Os dados voltam pela cadeia até o Claude
+5. Ao enviar, o fluxo vai do Claude → servidor MCP → bridge Go → WhatsApp
 
 ## Troubleshooting
 
-- If you encounter permission issues when running uv, you may need to add it to your PATH or use the full path to the executable.
-- Make sure both the Go application and the Python server are running for the integration to work properly.
+- **QR code não aparece**: reinicie o bridge; verifique se o terminal suporta exibir QR codes.
+- **Já logado**: se a sessão está ativa, o bridge reconecta sem mostrar QR.
+- **Limite de dispositivos**: o WhatsApp limita aparelhos conectados. Remova um em **Configurações → Aparelhos conectados**.
+- **Mensagens não carregam**: após autenticar, o histórico pode levar alguns minutos para sincronizar.
+- **`list_chats` vazio / MCP não vê mensagens**: quase sempre é descompasso de caminho — o bridge precisa ser iniciado de dentro de `whatsapp-bridge/` (veja a nota do systemd) para gravar no mesmo `store/` que o MCP lê.
+- **WhatsApp fora de sincronia**: apague `whatsapp-bridge/store/messages.db` e `whatsapp-bridge/store/whatsapp.db` e reinicie o bridge para reautenticar.
 
-### Authentication Issues
+## Créditos
 
-- **QR Code Not Displaying**: If the QR code doesn't appear, try restarting the authentication script. If issues persist, check if your terminal supports displaying QR codes.
-- **WhatsApp Already Logged In**: If your session is already active, the Go bridge will automatically reconnect without showing a QR code.
-- **Device Limit Reached**: WhatsApp limits the number of linked devices. If you reach this limit, you'll need to remove an existing device from WhatsApp on your phone (Settings > Linked Devices).
-- **No Messages Loading**: After initial authentication, it can take several minutes for your message history to load, especially if you have many chats.
-- **WhatsApp Out of Sync**: If your WhatsApp messages get out of sync with the bridge, delete both database files (`whatsapp-bridge/store/messages.db` and `whatsapp-bridge/store/whatsapp.db`) and restart the bridge to re-authenticate.
-
-For additional Claude Desktop integration troubleshooting, see the [MCP documentation](https://modelcontextprotocol.io/quickstart/server#claude-for-desktop-integration-issues). The documentation includes helpful tips for checking logs and resolving common issues.
+Fork de [`lharries/whatsapp-mcp`](https://github.com/lharries/whatsapp-mcp). Licença [MIT](./LICENSE).

@@ -18,7 +18,7 @@ Em relação ao projeto original, este fork traz:
 - 🔄 **Migração para a API atual do whatsmeow** — parâmetros `context.Context` em `Download`, `sqlstore.New`, `GetFirstDevice`, `GetGroupInfo` e `GetContact`, além de dependências atualizadas (whatsmeow, libsignal, go-sqlite3, protobuf). Corrige falhas de compilação/conexão com as versões novas do servidor do WhatsApp.
 - ⚙️ **Serviço systemd de usuário** para iniciar automaticamente no boot e reiniciar sozinho (instruções abaixo).
 
-> ⚠️ **Nota de segurança:** por padrão o bridge escuta em `:8080` em **todas as interfaces de rede** e **sem autenticação** — qualquer um na mesma rede pode enviar mensagens pela sua conta. Se a máquina não for isolada, altere `serverAddr` em `whatsapp-bridge/main.go` para `fmt.Sprintf("127.0.0.1:%d", port)` para escutar apenas em localhost (o servidor MCP roda na mesma máquina, então não precisa de acesso pela rede).
+> ⚠️ **Nota de segurança:** a API REST do bridge (`:8080`) **não tem autenticação**, por isso agora ela escuta **somente em `127.0.0.1`** (loopback) e não fica acessível pela rede. O servidor MCP roda na mesma máquina e fala com ela localmente. Se precisar de acesso remoto, use um túnel SSH ou rode o servidor MCP por SSH (stdio) em vez de expor a porta.
 
 > ⚠️ **Sobre banimento:** o whatsmeow é um cliente **não-oficial** e usá-lo tecnicamente viola os Termos de Serviço do WhatsApp. Para uso pessoal e moderado (ler chats, responder contatos que já te conhecem, volume humano) o risco é baixo, mas existe. **Evite** envio em massa, automação agressiva e mensagens para números que não te conhecem.
 

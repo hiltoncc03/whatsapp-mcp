@@ -10,6 +10,32 @@ import audio
 MESSAGES_DB_PATH = os.path.join(os.path.dirname(os.path.abspath(__file__)), '..', 'whatsapp-bridge', 'store', 'messages.db')
 WHATSAPP_API_BASE_URL = "http://localhost:8080/api"
 
+
+def _normalize_recipient(recipient: str) -> str:
+    """Keep only the digits of a phone number or user JID (e.g. '+39 351 455 2408' or '393514552408@s.whatsapp.net')."""
+    base = (recipient or "").split("@")[0]
+    return "".join(ch for ch in base if ch.isdigit())
+
+
+def _send_blocked_reason(recipient: str, kind: str = "message"):
+    """Return a refusal message when sending is restricted by environment variables, else None.
+
+    WHATSAPP_READ_ONLY=1       -> every send is refused.
+    WHATSAPP_SEND_TEXT_ONLY=1  -> send_file / send_audio_message are refused.
+    WHATSAPP_SEND_ALLOW=a,b    -> only these recipients (digits or JIDs, groups by full JID) may receive messages.
+    """
+    if os.environ.get("WHATSAPP_READ_ONLY") == "1":
+        return "Sending is disabled on this server (WHATSAPP_READ_ONLY=1)."
+    if kind != "message" and os.environ.get("WHATSAPP_SEND_TEXT_ONLY") == "1":
+        return "Only text messages are allowed on this server (WHATSAPP_SEND_TEXT_ONLY=1)."
+    allow = [a.strip() for a in os.environ.get("WHATSAPP_SEND_ALLOW", "").split(",") if a.strip()]
+    if allow:
+        wanted = _normalize_recipient(recipient)
+        allowed = {_normalize_recipient(a) for a in allow}
+        if (recipient or "").strip() not in allow and wanted not in allowed:
+            return "Recipient is not in WHATSAPP_SEND_ALLOW; message not sent."
+    return None
+
 @dataclass
 class Message:
     timestamp: datetime
@@ -623,6 +649,9 @@ def get_direct_chat_by_contact(sender_phone_number: str) -> Optional[Chat]:
             conn.close()
 
 def send_message(recipient: str, message: str) -> Tuple[bool, str]:
+    reason = _send_blocked_reason(recipient, "message")
+    if reason:
+        return False, reason
     try:
         # Validate input
         if not recipient:
@@ -651,6 +680,9 @@ def send_message(recipient: str, message: str) -> Tuple[bool, str]:
         return False, f"Unexpected error: {str(e)}"
 
 def send_file(recipient: str, media_path: str) -> Tuple[bool, str]:
+    reason = _send_blocked_reason(recipient, "file")
+    if reason:
+        return False, reason
     try:
         # Validate input
         if not recipient:
@@ -685,6 +717,9 @@ def send_file(recipient: str, media_path: str) -> Tuple[bool, str]:
         return False, f"Unexpected error: {str(e)}"
 
 def send_audio_message(recipient: str, media_path: str) -> Tuple[bool, str]:
+    reason = _send_blocked_reason(recipient, "audio")
+    if reason:
+        return False, reason
     try:
         # Validate input
         if not recipient:

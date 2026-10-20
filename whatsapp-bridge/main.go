@@ -413,6 +413,9 @@ func extractMediaInfo(msg *waProto.Message) (mediaType string, filename string, 
 func handleMessage(client *whatsmeow.Client, messageStore *MessageStore, msg *events.Message, logger waLog.Logger) {
 	// Save message to database
 	chatJID := msg.Info.Chat.String()
+	if !storeAllowed(chatJID) {
+		return // fora de WHATSAPP_STORE_ALLOW: não grava
+	}
 	sender := msg.Info.Sender.User
 
 	// Get appropriate chat name (pass nil for conversation since we don't have one for regular messages)
@@ -680,6 +683,9 @@ func extractDirectPathFromURL(url string) string {
 // Best-effort: failures are ignored so a missing notify-send never blocks startup.
 func notifyPlasma(title, body string) {
 	// ponytail: notify-send covers KDE/GNOME/any libnotify desktop; no Go dep needed
+	if os.Getenv("WHATSAPP_NO_NOTIFY") == "1" {
+		return
+	}
 	if err := exec.Command("notify-send", "-a", "WhatsApp Bridge", title, body).Run(); err != nil {
 		fmt.Printf("notify-send failed (ignored): %v\n", err)
 	}
@@ -710,6 +716,13 @@ func startRESTServer(client *whatsmeow.Client, messageStore *MessageStore, port 
 
 		if req.Message == "" && req.MediaPath == "" {
 			http.Error(w, "Message or media path is required", http.StatusBadRequest)
+			return
+		}
+
+		if reason := sendBlockedReason(req.Recipient, req.MediaPath != ""); reason != "" {
+			w.Header().Set("Content-Type", "application/json")
+			w.WriteHeader(http.StatusForbidden)
+			json.NewEncoder(w).Encode(SendMessageResponse{Success: false, Message: reason})
 			return
 		}
 
@@ -745,6 +758,11 @@ func startRESTServer(client *whatsmeow.Client, messageStore *MessageStore, port 
 		var req DownloadMediaRequest
 		if err := json.NewDecoder(r.Body).Decode(&req); err != nil {
 			http.Error(w, "Invalid request format", http.StatusBadRequest)
+			return
+		}
+
+		if os.Getenv("WHATSAPP_DOWNLOAD_DISABLED") == "1" {
+			http.Error(w, "media download is disabled on this bridge (WHATSAPP_DOWNLOAD_DISABLED=1)", http.StatusForbidden)
 			return
 		}
 
@@ -786,7 +804,7 @@ func startRESTServer(client *whatsmeow.Client, messageStore *MessageStore, port 
 
 	// Start the server
 	// Listen on loopback only: the REST API has no authentication, and the MCP server runs on the same machine.
-	serverAddr := fmt.Sprintf("127.0.0.1:%d", port)
+	serverAddr := fmt.Sprintf("%s:%d", listenHost(), port)
 	fmt.Printf("Starting REST API server on %s...\n", serverAddr)
 
 	// Run server in a goroutine so it doesn't block
@@ -878,8 +896,21 @@ func main() {
 		}
 
 		// Print QR code for pairing with phone
+		pairPhone := onlyDigits(os.Getenv("WHATSAPP_PAIR_PHONE"))
+		pairRequested := false
 		for evt := range qrChan {
 			if evt.Event == "code" {
+				_ = os.WriteFile("store/qr.txt", []byte(evt.Code), 0600)
+				if pairPhone != "" && !pairRequested {
+					pairRequested = true
+					code, perr := client.PairPhone(context.Background(), pairPhone, true, whatsmeow.PairClientChrome, "Chrome (Linux)")
+					if perr != nil {
+						logger.Errorf("Pairing by phone code failed: %v", perr)
+					} else {
+						_ = os.WriteFile("store/pair-code.txt", []byte(code+"\n"), 0600)
+						fmt.Println("\nPairing code (WhatsApp > Linked devices > Link with phone number):", code)
+					}
+				}
 				fmt.Println("\nScan this QR code with your WhatsApp app:")
 				qrterminal.GenerateHalfBlock(evt.Code, qrterminal.L, os.Stdout)
 			} else if evt.Event == "success" {
@@ -1031,6 +1062,9 @@ func handleHistorySync(client *whatsmeow.Client, messageStore *MessageStore, his
 		}
 
 		chatJID := *conversation.ID
+		if !storeAllowed(chatJID) {
+			continue // fora de WHATSAPP_STORE_ALLOW: não grava
+		}
 
 		// Try to parse the JID
 		jid, err := types.ParseJID(chatJID)
